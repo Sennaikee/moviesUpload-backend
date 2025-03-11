@@ -10,10 +10,10 @@ router.post(
   authenticateToken,
   upload.single("cover"),
   async (req, res) => {
-    const { title, description } = req.body;
+    const { title, description, genre, production_year } = req.body;
     const userId = req.user.id; // Extract from JWT
 
-    if (!title || !description || !req.file) {
+    if (!title || !description || !genre || !production_year || !req.file) {
       return res.status(400).json({ message: "All fields are required!" });
     }
 
@@ -21,14 +21,16 @@ router.post(
 
     try {
       const query = `
-        INSERT INTO movies (title, description, cover, user_id) 
-        VALUES ($1, $2, $3, $4) RETURNING id
+        INSERT INTO movies (title, description, cover, user_id, genre, production_year) 
+        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
       `;
       const { rows } = await pool.query(query, [
         title,
         description,
         coverUrl,
         userId,
+        genre,
+        production_year,
       ]);
 
       res.status(201).json({
@@ -140,5 +142,4 @@ router.get("/", async (req, res) => {
   }
 });
 
-// hii
 module.exports = router;
