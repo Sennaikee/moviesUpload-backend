@@ -1,149 +1,143 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../config");
+const pool = require("../config"); // PostgreSQL connection
 const upload = require("../middleware/upload");
-const  authenticateToken  = require("../middleware/auth"); // Import authentication middleware
+const authenticateToken = require("../middleware/auth"); // Authentication middleware
 
 // Upload a movie (Only for registered users)
 router.post(
   "/upload",
   authenticateToken,
   upload.single("cover"),
-  (req, res) => {
+  async (req, res) => {
     const { title, description } = req.body;
     const userId = req.user.id; // Extract from JWT
+
     if (!title || !description || !req.file) {
       return res.status(400).json({ message: "All fields are required!" });
     }
 
     const coverUrl = req.file.path; // Get Cloudinary URL
-    const query =
-      "INSERT INTO movies (title, description, cover, user_id) VALUES (?, ?, ?, ?)";
-    db.query(query, [title, description, coverUrl, userId], (err, result) => {
-      if (err) {
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+
+    try {
+      const query = `
+        INSERT INTO movies (title, description, cover, user_id) 
+        VALUES ($1, $2, $3, $4) RETURNING id
+      `;
+      const { rows } = await pool.query(query, [
+        title,
+        description,
+        coverUrl,
+        userId,
+      ]);
+
       res.status(201).json({
         message: "Movie uploaded successfully!",
-        movieId: result.insertId,
+        movieId: rows[0].id,
         coverUrl,
       });
-    });
+    } catch (err) {
+      res.status(500).json({ message: "Database error", error: err });
+    }
   }
 );
 
-
 // Like a movie (Only for registered users)
-router.post("/:id/like", authenticateToken, (req, res) => {
+router.post("/:id/like", authenticateToken, async (req, res) => {
   const { id: movieId } = req.params;
-  const userId = req.user.id; // Get user ID from JWT
+  const userId = req.user.id;
 
-  const checkQuery =
-    "SELECT * FROM likes_dislikes WHERE user_id = ? AND movie_id = ?";
-  db.query(checkQuery, [userId, movieId], (err, results) => {
-    if (err)
-      return res.status(500).json({ message: "Database error", error: err });
+  try {
+    const checkQuery = `
+      SELECT * FROM likes_dislikes WHERE user_id = $1 AND movie_id = $2
+    `;
+    const { rows } = await pool.query(checkQuery, [userId, movieId]);
 
-    if (results.length > 0) {
-      // User has already liked or disliked this movie
-      if (results[0].action === "like") {
+    if (rows.length > 0) {
+      if (rows[0].action === "like") {
         return res
           .status(400)
           .json({ message: "You have already liked this movie!" });
       } else {
-        // Update dislike → like
-        const updateQuery =
-          "UPDATE likes_dislikes SET action = 'like' WHERE user_id = ? AND movie_id = ?";
-        db.query(updateQuery, [userId, movieId], (updateErr) => {
-          if (updateErr)
-            return res
-              .status(500)
-              .json({ message: "Database error", error: updateErr });
-          res.status(200).json({ message: "You changed your vote to like!" });
-        });
+        const updateQuery = `
+          UPDATE likes_dislikes SET action = 'like' WHERE user_id = $1 AND movie_id = $2
+        `;
+        await pool.query(updateQuery, [userId, movieId]);
+        return res
+          .status(200)
+          .json({ message: "You changed your vote to like!" });
       }
-    } else {
-      // Insert new like
-      const insertQuery =
-        "INSERT INTO likes_dislikes (user_id, movie_id, action) VALUES (?, ?, 'like')";
-      db.query(insertQuery, [userId, movieId], (insertErr) => {
-        if (insertErr)
-          return res
-            .status(500)
-            .json({ message: "Database error", error: insertErr });
-        res.status(200).json({ message: "Movie liked!" });
-      });
     }
-  });
+
+    // Insert new like
+    const insertQuery = `
+      INSERT INTO likes_dislikes (user_id, movie_id, action) VALUES ($1, $2, 'like')
+    `;
+    await pool.query(insertQuery, [userId, movieId]);
+
+    res.status(200).json({ message: "Movie liked!" });
+  } catch (err) {
+    res.status(500).json({ message: "Database error", error: err });
+  }
 });
 
-
 // Dislike a movie (Only for registered users)
-router.post("/:id/dislike", authenticateToken, (req, res) => {
+router.post("/:id/dislike", authenticateToken, async (req, res) => {
   const { id: movieId } = req.params;
-  const userId = req.user.id; // Get user ID from JWT
+  const userId = req.user.id;
 
-  const checkQuery =
-    "SELECT * FROM likes_dislikes WHERE user_id = ? AND movie_id = ?";
-  db.query(checkQuery, [userId, movieId], (err, results) => {
-    if (err)
-      return res.status(500).json({ message: "Database error", error: err });
+  try {
+    const checkQuery = `
+      SELECT * FROM likes_dislikes WHERE user_id = $1 AND movie_id = $2
+    `;
+    const { rows } = await pool.query(checkQuery, [userId, movieId]);
 
-    if (results.length > 0) {
-      // User has already liked or disliked this movie
-      if (results[0].action === "dislike") {
+    if (rows.length > 0) {
+      if (rows[0].action === "dislike") {
         return res
           .status(400)
           .json({ message: "You have already disliked this movie!" });
       } else {
-        // Update like → dislike
-        const updateQuery =
-          "UPDATE likes_dislikes SET action = 'dislike' WHERE user_id = ? AND movie_id = ?";
-        db.query(updateQuery, [userId, movieId], (updateErr) => {
-          if (updateErr)
-            return res
-              .status(500)
-              .json({ message: "Database error", error: updateErr });
-          res
-            .status(200)
-            .json({ message: "You changed your vote to dislike!" });
-        });
+        const updateQuery = `
+          UPDATE likes_dislikes SET action = 'dislike' WHERE user_id = $1 AND movie_id = $2
+        `;
+        await pool.query(updateQuery, [userId, movieId]);
+        return res
+          .status(200)
+          .json({ message: "You changed your vote to dislike!" });
       }
-    } else {
-      // Insert new dislike
-      const insertQuery =
-        "INSERT INTO likes_dislikes (user_id, movie_id, action) VALUES (?, ?, 'dislike')";
-      db.query(insertQuery, [userId, movieId], (insertErr) => {
-        if (insertErr)
-          return res
-            .status(500)
-            .json({ message: "Database error", error: insertErr });
-        res.status(200).json({ message: "Movie disliked!" });
-      });
     }
-  });
-});
 
+    // Insert new dislike
+    const insertQuery = `
+      INSERT INTO likes_dislikes (user_id, movie_id, action) VALUES ($1, $2, 'dislike')
+    `;
+    await pool.query(insertQuery, [userId, movieId]);
+
+    res.status(200).json({ message: "Movie disliked!" });
+  } catch (err) {
+    res.status(500).json({ message: "Database error", error: err });
+  }
+});
 
 // Get all movies (Anyone can access)
-router.get("/", (req, res) => {
-  const query = `
-    SELECT movies.*, 
-      (SELECT COUNT(*) FROM likes_dislikes WHERE movie_id = movies.id AND action = 'like') AS likes,
-      (SELECT COUNT(*) FROM likes_dislikes WHERE movie_id = movies.id AND action = 'dislike') AS dislikes,
-      users.username AS uploaded_by
-    FROM movies
-    LEFT JOIN users ON movies.user_id = users.id
-    ORDER BY movies.created_at DESC
-  `;
+router.get("/", async (req, res) => {
+  try {
+    const query = `
+      SELECT movies.*, 
+        (SELECT COUNT(*) FROM likes_dislikes WHERE movie_id = movies.id AND action = 'like') AS likes,
+        (SELECT COUNT(*) FROM likes_dislikes WHERE movie_id = movies.id AND action = 'dislike') AS dislikes,
+        users.username AS uploaded_by
+      FROM movies
+      LEFT JOIN users ON movies.user_id = users.id
+      ORDER BY movies.created_at DESC
+    `;
 
-  db.query(query, (err, results) => {
-    if (err)
-      return res.status(500).json({ message: "Database error", error: err });
-    res.status(200).json(results);
-  });
+    const { rows } = await pool.query(query);
+    res.status(200).json(rows);
+  } catch (err) {
+    res.status(500).json({ message: "Database error", error: err });
+  }
 });
-
-
 
 module.exports = router;

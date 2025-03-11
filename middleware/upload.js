@@ -12,10 +12,10 @@
 // const upload = multer({ storage });
 // module.exports = upload;
 
-require("dotenv").config();
-const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
+require("dotenv").config();
 
 // Configure Cloudinary
 cloudinary.config({
@@ -24,17 +24,45 @@ cloudinary.config({
   api_secret: process.env.CLOUD_API_SECRET,
 });
 
-// Set up Multer-Cloudinary storage
+// Define allowed formats
+const allowedFormats = [
+  "image/jpeg",
+  "image/png",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+];
+
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder: "movie_covers", // Folder name in Cloudinary
-    format: async (req, file) => "jpg", // Convert all images to JPG
+    folder: "movie_covers",
+    format: async (req, file) => "jpg",
     public_id: (req, file) => Date.now() + "-" + file.originalname,
   },
 });
 
-const upload = multer({ storage });
+// File filter function
+const fileFilter = (req, file, cb) => {
+  console.log("Received file:", file);
+
+  if (!file) {
+    console.log("No file received!");
+    return cb(new Error("No file received!"), false);
+  }
+
+  console.log("File mimetype:", file.mimetype);
+
+  if (allowedFormats.includes(file.mimetype)) {
+    console.log("File is valid");
+    cb(null, true);
+  } else {
+    console.log("Invalid file type:", file.mimetype);
+    cb(new Error("Only image uploads are allowed!"), false);
+  }
+};
+
+
+const upload = multer({ storage, fileFilter });
 
 module.exports = upload;
-
