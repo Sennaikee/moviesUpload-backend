@@ -27,10 +27,7 @@ cloudinary.config({
 // Define allowed formats
 const allowedFormats = [
   "image/jpeg",
-  "image/png",
   "image/jpg",
-  "image/webp",
-  "image/gif",
 ];
 
 const storage = new CloudinaryStorage({

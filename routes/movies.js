@@ -142,4 +142,32 @@ router.get("/", async (req, res) => {
   }
 });
 
+// Get a specific movie by ID (Anyone can access)
+router.get("/:id", async (req, res) => {
+  const { id: movieId } = req.params;
+
+  try {
+    const query = `
+      SELECT movies.*, 
+        (SELECT COUNT(*) FROM likes_dislikes WHERE movie_id = movies.id AND action = 'like') AS likes,
+        (SELECT COUNT(*) FROM likes_dislikes WHERE movie_id = movies.id AND action = 'dislike') AS dislikes,
+        users.username AS uploaded_by
+      FROM movies
+      LEFT JOIN users ON movies.user_id = users.id
+      WHERE movies.id = $1
+    `;
+
+    const { rows } = await pool.query(query, [movieId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Movie not found!" });
+    }
+
+    res.status(200).json(rows[0]);
+  }  catch (err) {
+    console.error("Database error:", err); // Log the actual error
+    res.status(500).json({ message: "Database error", error: err.message });
+}
+
+});
 module.exports = router;
